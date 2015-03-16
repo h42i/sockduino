@@ -111,8 +111,6 @@ void receiveData(int byteCount)
             // Clear the buffer if there is too much to read
             Wire.read();
         }
-
-        return;
     }
 }
 
