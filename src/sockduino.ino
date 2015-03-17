@@ -22,7 +22,7 @@ void setup()
     // Set the pin connected to the data input of the transmitter
     sockSwitch.enableTransmit(TRANSMIT_PIN);
     // Set the pulse length (adjusting this value can increase the range)
-    sockSwitch.setPulseLength(340);
+    sockSwitch.setPulseLength(360);
 }
 
 void loop()
@@ -34,52 +34,58 @@ void loop()
 
 void receiveData(int byteCount)
 {
-    if (byteCount == 11)
+    if (byteCount == 5)
     {
         // First code type to switch the sockets: "type a with dip switches"
         // 11 characters are sent over i2c:
-        // char 0: '1' or '0', a '1' indicates to turn the socket on, a '0'
+        // byte 0: 1 or 0, a 1 indicates to turn the socket on, a 0
         //         indicates to turn the socket off
-        // char 1 to 5: each '1' or '0', concatenated they give the 5 bit
-        //              string encoded system code
-        // char 6 to 10: each '1' or '0', concatenated they give the 5 bit
-        //               string encoded unit code
+        // byte 1: 5 bit value giving the system code
+        // byte 2: 5 bit value giving the unit code
+        // byte 3 to 4: 16 bit pulse length, byte 11 is the high byte,
+        //              byte 12 is the low byte
 
         char newState = 0x00;
         char systemCode[6] = { 0x00, };
         char unitCode[6] = { 0x00, };
 
-        int messageCounter = 0;
+        // Byte 0 is the new state of the socket
+        newState = Wire.read();
 
-        while (Wire.available())
+        // Byte 1 is the system code of the socket
+        char systemCodeBits = Wire.read();
+
+        // Convert the binary code to a string
+        for (int i = 0; i < 5; i++)
         {
-            if (messageCounter == 0)
-            {
-                // First char sent is the new state of the socket
-                newState = Wire.read();
-            }
-            else if (messageCounter < 6)
-            {
-                // Char 1 to 5 sent are the system code of the socket
-                systemCode[messageCounter - 1] = Wire.read();
-            }
-            else if (messageCounter < 11)
-            {
-                // Char 6 to 10 sent are the unit code of the socket
-                unitCode[messageCounter - 6] = Wire.read();
-            }
-
-            messageCounter++;
+            systemCode[i] = '0' + ((systemCodeBits >> (4 - i)) & 0x01);
         }
 
-        if (newState == '0')
+        // Byte 2 is the unit code of the socket
+        char unitCodeBits = Wire.read();
+
+        // Convert the binary code to a string
+        for (int i = 0; i < 5; i++)
+        {
+            unitCode[i] = '0' + ((unitCodeBits >> (4 - i)) & 0x01);
+        }
+
+        // Byte 3 is the high byte of the pulse length
+        char pulseHigh = Wire.read();
+        // Byte 4 is the low byte of the pulse length 
+        char pulseLow = Wire.read();
+
+        // Construct the 16 bit value and set the pulse length
+        sockSwitch.setPulseLength((pulseHigh << 8) | pulseLow);
+
+        if (newState == 0)
         {
             Serial.println("Switching socket off.");
 
             // New state is a '0', so turn the socket off
             sockSwitch.switchOff(systemCode, unitCode);
         }
-        else if (newState == '1')
+        else if (newState == 1)
         {
             Serial.println("Switching socket on.");
 
@@ -87,7 +93,7 @@ void receiveData(int byteCount)
             sockSwitch.switchOn(systemCode, unitCode);
         }
     }
-    else if (byteCount == 2)
+    else if (byteCount == 4)
     {
         // Second code type to switch the sockets: "decimal"
         // One decimal value (16 bit) is sent over i2c, that
@@ -95,16 +101,23 @@ void receiveData(int byteCount)
         // it will be turned off or on
 
         // First byte sent is the high byte
-        char high = Wire.read();
+        char valueHigh = Wire.read();
         // Second byte sent is the low byte
-        char low = Wire.read();
+        char valueLow = Wire.read();
 
+        // Third byte is the high byte of the pulse length
+        char pulseHigh = Wire.read();
+        // Fourth is the low byte of the pulse length 
+        char pulseLow = Wire.read();
+
+        // Construct the 16 bit value and set the pulse length
+        sockSwitch.setPulseLength((pulseHigh << 8) | pulseLow);
         // Construct the 16 bit value and begin the transmission
-        sockSwitch.send((high << 8) | low, 24);
+        sockSwitch.send((valueHigh << 8) | valueLow, 24);
     }
     else
     {
-        Serial.println("I need 11/2 bytes to operate properly.");
+        Serial.println("I need 5/4 bytes to operate properly.");
 
         while (Wire.available())
         {
