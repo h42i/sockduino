@@ -1,2 +1,2 @@
 # sockduino
-A i2e controlled 433 mhz socket switcher.
+An I2C controlled 433mhz socket-switcher.
